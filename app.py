@@ -19,9 +19,6 @@ IGNORED_DIRS = {
 
 
 def should_load_file(file_path):
-    """
-    Determine if a file should be loaded by checking if it's inside an ignored directory.
-    """
     for ignored_dir in IGNORED_DIRS:
         if f"/{ignored_dir}/" in file_path or file_path.startswith(f"{ignored_dir}/"):
             return False
@@ -29,9 +26,12 @@ def should_load_file(file_path):
 
 
 st.title("Codebase RAG Assistant")
-st.subheader("Enter Github https URL:")
 
-github_url = st.text_input("GitHub Repo URL")
+col1, col2 = st.columns([3, 1])
+with col1:
+    github_url = st.text_input("GitHub Repo URL")
+with col2:
+    branch = st.text_input("Branch", placeholder="main")
 
 if st.button("Submit"):
     if github_url:
@@ -44,7 +44,7 @@ if st.button("Submit"):
             else:
                 repo_owner = url_parts[3]
                 repo_name = url_parts[4]
-                branch = "main"
+                branch = branch.strip() if branch.strip() else "main"
 
                 loader = GithubFileLoader(
                     repo=f"{repo_owner}/{repo_name}",
