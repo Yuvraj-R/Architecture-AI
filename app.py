@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Define ignored directories
 IGNORED_DIRS = {
     "node_modules",
     "venv",
@@ -29,18 +28,14 @@ def should_load_file(file_path):
     return True
 
 
-# Streamlit UI
 st.title("Codebase RAG Assistant")
 st.subheader("Enter Github https URL:")
 
-# Input box for the GitHub URL
 github_url = st.text_input("GitHub Repo URL")
 
-# Button to submit
 if st.button("Submit"):
     if github_url:
         try:
-            # Extract repo and owner from the URL
             url_parts = github_url.rstrip("/").split("/")
             if len(url_parts) < 5:
                 st.error(
@@ -49,20 +44,17 @@ if st.button("Submit"):
             else:
                 repo_owner = url_parts[3]
                 repo_name = url_parts[4]
-                branch = "main"  # Default branch (change as needed)
+                branch = "main"
 
-                # Initialize the loader with a custom file filter
                 loader = GithubFileLoader(
                     repo=f"{repo_owner}/{repo_name}",
                     branch=branch,
                     github_api_url="https://api.github.com",
-                    file_filter=should_load_file,  # Use custom file filter
+                    file_filter=should_load_file,
                 )
 
-                # Load documents
                 docs = loader.load()
 
-                # Display number of loaded documents
                 st.success(f"Successfully loaded {len(docs)} documents.")
         except Exception as e:
             st.error(f"An error occurred: {e}")
