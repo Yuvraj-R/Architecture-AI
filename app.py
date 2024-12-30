@@ -1,10 +1,12 @@
 import streamlit as st
 import os
-from langchain_community.document_loaders import GithubFileLoader
+import shutil
+from git import Repo
+from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
+from langchain.docstore.document import Document
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
-from dotenv import load_dotenv
 from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
 
@@ -78,21 +80,65 @@ def get_text_splitter(file_extension):
 def load_github_docs(repo_owner, repo_name, branch):
     """
     Load documents from the specified GitHub repository.
+    (Refactored to clone locally and read files, rather than using GithubFileLoader.)
     """
-    loader = GithubFileLoader(
-        repo=f"{repo_owner}/{repo_name}",
+    # Construct a local path to clone the repo
+    local_repo_path = os.path.join("repos", f"{repo_owner}_{repo_name}")
+
+    # If it already exists, remove it to ensure a fresh clone
+    if os.path.exists(local_repo_path):
+        shutil.rmtree(local_repo_path)
+
+    # Clone the GitHub repo locally using the provided branch
+    Repo.clone_from(
+        f"https://github.com/{repo_owner}/{repo_name}.git",
+        local_repo_path,
         branch=branch,
-        github_api_url="https://api.github.com",
-        file_filter=should_load_file,
     )
-    return loader.load()
+
+    docs = []
+    # Walk through the local repo and load files that should be processed
+    for root, dirs, files in os.walk(local_repo_path):
+        # Filter out ignored directories directly
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            relative_path = os.path.relpath(file_path, local_repo_path)
+
+            # Check if we should load this file (e.g., skip 'node_modules', etc.)
+            if not should_load_file(relative_path):
+                continue
+
+            # Determine the file extension to decide text splitting
+            file_extension = os.path.splitext(file_name)[1].lower()
+
+            # Attempt to read the file as UTF-8. If it fails, skip it
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Create a single Document with this file's content
+                doc = Document(page_content=content, metadata={"source": relative_path})
+                docs.append(doc)
+
+            except UnicodeDecodeError:
+                # If the file can't be decoded as UTF-8, skip it
+                continue
+            except Exception as e:
+                # Log or skip any other file read errors
+                print(f"Skipping {relative_path} due to error: {e}")
+                continue
+
+    shutil.rmtree(local_repo_path)
+    return docs
 
 
 def split_documents(docs):
     """
     Split documents into smaller chunks based on file type.
     """
-    split_documents = []
+    split_documents_list = []
     skipped_files = 0
 
     for doc in docs:
@@ -102,11 +148,11 @@ def split_documents(docs):
 
         if text_splitter:
             split_docs = text_splitter.split_documents([doc])
-            split_documents.extend(split_docs)
+            split_documents_list.extend(split_docs)
         else:
             skipped_files += 1
 
-    return split_documents, skipped_files
+    return split_documents_list, skipped_files
 
 
 def store_embeddings_in_pinecone(split_documents, namespace):
@@ -143,6 +189,7 @@ def perform_query(query, namespace):
 
 
 # Streamlit Interface
+st.set_page_config(page_title="Codebase RAG Assistant", layout="wide")
 st.title("Codebase RAG Assistant")
 
 col1, col2 = st.columns([3, 1])
@@ -165,10 +212,11 @@ if st.button("Submit"):
                 repo_name = url_parts[4]
                 branch = branch.strip() if branch.strip() else "main"
 
-                # Load documents
+                # Load documents (now clones locally and reads files)
                 docs = load_github_docs(repo_owner, repo_name, branch)
                 st.success(f"Successfully loaded {len(docs)} documents.")
 
+                # Split documents
                 split_docs, skipped_files = split_documents(docs)
                 st.success(f"Code successfully split into {len(split_docs)} chunks.")
                 st.info(f"Skipped {skipped_files} unsupported files.")
