@@ -2,15 +2,15 @@ import streamlit as st
 import os
 from langchain_community.document_loaders import GithubFileLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
-from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 from pinecone import Pinecone
+from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
-# Pinecone is already initialized
+# Initialize Pinecone Connection
 index = Pinecone(api_key=os.getenv("PINECONE_API_KEY")).Index("codebase-rag")
 
 IGNORED_DIRS = {
@@ -109,7 +109,7 @@ def split_documents(docs):
     return split_documents, skipped_files
 
 
-def store_embeddings_in_pinecone(split_documents):
+def store_embeddings_in_pinecone(split_documents, namespace):
     """
     Generate vector embeddings for the split documents and store them in Pinecone.
     """
@@ -124,10 +124,26 @@ def store_embeddings_in_pinecone(split_documents):
         documents=split_documents,
         embedding=embeddings,
         index_name="codebase-rag",
+        namespace=namespace,
     )
 
 
-st.title("Codebase RAG Assistant: Store Vectors in Pinecone")
+def perform_query(query, namespace):
+    """
+    Query the Pinecone database and fetch results based on the query.
+    """
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    query_embedding = embeddings.embed_query(query)
+
+    results = index.query(
+        vector=query_embedding, top_k=5, include_metadata=True, namespace=namespace
+    )
+
+    return results
+
+
+# Streamlit Interface
+st.title("Codebase RAG Assistant")
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -158,10 +174,37 @@ if st.button("Submit"):
                 st.info(f"Skipped {skipped_files} unsupported files.")
 
                 # Store embeddings in Pinecone
-                store_embeddings_in_pinecone(split_docs)
+                namespace = f"{repo_owner}/{repo_name}"
+                store_embeddings_in_pinecone(split_docs, namespace)
                 st.success("Vector embeddings stored in Pinecone successfully.")
+
+                # Store namespace for querying
+                st.session_state.repo_path = f"{repo_owner}/{repo_name}"
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
     else:
         st.warning("Please enter a valid GitHub repository URL.")
+
+# Chat interface
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+if prompt := st.chat_input("Ask about the codebase..."):
+    if "repo_path" not in st.session_state:
+        st.error("Please process a repository first!")
+    else:
+        st.chat_message("user").markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        with st.spinner("Querying Pinecone database..."):
+            try:
+                # Perform the query
+                results = perform_query(prompt, namespace=st.session_state.repo_path)
+                st.write(results)
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
