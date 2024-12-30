@@ -3,7 +3,6 @@ from langchain_community.document_loaders import GithubFileLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 # Directories to ignore during loading
@@ -20,22 +19,37 @@ IGNORED_DIRS = {
     "vendor",
 }
 
-# File extension to language mapping
 EXTENSION_TO_LANGUAGE = {
-    ".py": Language.PYTHON,
-    ".js": Language.JS,
-    ".java": Language.JAVA,
     ".cpp": Language.CPP,
-    ".c": Language.C,
+    ".go": Language.GO,
+    ".java": Language.JAVA,
+    ".kotlin": Language.KOTLIN,
+    ".js": Language.JS,
     ".ts": Language.TS,
+    ".php": Language.PHP,
+    ".proto": Language.PROTO,
+    ".py": Language.PYTHON,
+    ".rst": Language.RST,
+    ".rb": Language.RUBY,
+    ".rs": Language.RUST,
+    ".scala": Language.SCALA,
+    ".swift": Language.SWIFT,
+    ".md": Language.MARKDOWN,
+    ".tex": Language.LATEX,
     ".html": Language.HTML,
+    ".cs": Language.CSHARP,
+    ".cob": Language.COBOL,
+    ".c": Language.C,
+    ".lua": Language.LUA,
+    ".pl": Language.PERL,
+    ".hs": Language.HASKELL,
 }
 
-# General-purpose text splitter for unknown file types
+
+# General-purpose text splitter
 general_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 
 
-# Helper function to determine if a file should be loaded
 def should_load_file(file_path):
     for ignored_dir in IGNORED_DIRS:
         if f"/{ignored_dir}/" in file_path or file_path.startswith(f"{ignored_dir}/"):
@@ -43,30 +57,23 @@ def should_load_file(file_path):
     return True
 
 
-# Get appropriate text splitter based on file extension
 def get_text_splitter(file_extension):
-    """
-    Returns the appropriate text splitter based on the file extension.
-    """
     language = EXTENSION_TO_LANGUAGE.get(file_extension)
     if language:
         return RecursiveCharacterTextSplitter.from_language(
             language=language, chunk_size=1000, chunk_overlap=100
         )
-    return general_splitter
+    return None
 
 
-# Streamlit app interface
 st.title("Codebase RAG Assistant")
 
-# Input for GitHub repository URL and branch
 col1, col2 = st.columns([3, 1])
 with col1:
     github_url = st.text_input("GitHub Repo URL")
 with col2:
     branch = st.text_input("Branch", placeholder="main")
 
-# Process button
 if st.button("Submit"):
     if github_url:
         try:
@@ -92,25 +99,26 @@ if st.button("Submit"):
                 docs = loader.load()
                 st.success(f"Successfully loaded {len(docs)} documents.")
 
-                # Process and split documents
                 split_documents = []
+                skipped_files = 0
                 for doc in docs:
                     file_extension = (
                         doc.metadata.get("source", "").split(".")[-1].lower()
                     )
-                    file_extension = (
-                        f".{file_extension}"  # Ensure it matches the mapping
-                    )
+                    file_extension = f".{file_extension}"
 
                     # Get the relevant splitter
                     text_splitter = get_text_splitter(file_extension)
-                    # Split the document
-                    split_docs = text_splitter.split_documents([doc])
-                    split_documents.extend(split_docs)
+                    if text_splitter:
+                        split_docs = text_splitter.split_documents([doc])
+                        split_documents.extend(split_docs)
+                    else:
+                        skipped_files += 1  # Count skipped files
 
                 st.success(
                     f"Code successfully split into {len(split_documents)} chunks."
                 )
+                st.info(f"Skipped {skipped_files} unsupported files.")
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
