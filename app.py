@@ -1,11 +1,13 @@
 import streamlit as st
+import os
 from langchain_community.document_loaders import GithubFileLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Directories to ignore during loading
 IGNORED_DIRS = {
     "node_modules",
     "venv",
@@ -46,11 +48,10 @@ EXTENSION_TO_LANGUAGE = {
 }
 
 
-# General-purpose text splitter
-general_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-
-
 def should_load_file(file_path):
+    """
+    Determine whether a file should be loaded based on ignored directories.
+    """
     for ignored_dir in IGNORED_DIRS:
         if f"/{ignored_dir}/" in file_path or file_path.startswith(f"{ignored_dir}/"):
             return False
@@ -58,6 +59,9 @@ def should_load_file(file_path):
 
 
 def get_text_splitter(file_extension):
+    """
+    Returns the appropriate text splitter based on the file extension.
+    """
     language = EXTENSION_TO_LANGUAGE.get(file_extension)
     if language:
         return RecursiveCharacterTextSplitter.from_language(
@@ -66,7 +70,57 @@ def get_text_splitter(file_extension):
     return None
 
 
-st.title("Codebase RAG Assistant")
+def load_github_docs(repo_owner, repo_name, branch):
+    """
+    Load documents from the specified GitHub repository.
+    """
+    loader = GithubFileLoader(
+        repo=f"{repo_owner}/{repo_name}",
+        branch=branch,
+        github_api_url="https://api.github.com",
+        file_filter=should_load_file,
+    )
+    return loader.load()
+
+
+def split_documents(docs):
+    """
+    Split documents into smaller chunks based on file type.
+    """
+    split_documents = []
+    skipped_files = 0
+
+    for doc in docs:
+        file_extension = doc.metadata.get("source", "").split(".")[-1].lower()
+        file_extension = f".{file_extension}"
+        text_splitter = get_text_splitter(file_extension)
+
+        if text_splitter:
+            split_docs = text_splitter.split_documents([doc])
+            split_documents.extend(split_docs)
+        else:
+            skipped_files += 1
+
+    return split_documents, skipped_files
+
+
+def generate_embeddings(split_documents):
+    """
+    Generate vector embeddings for the split documents.
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise ValueError(
+            "OpenAI API key is missing. Please set it in your environment."
+        )
+
+    embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+    vector_store = InMemoryVectorStore(embeddings)
+    vector_store.add_documents(documents=split_documents)
+    return vector_store
+
+
+# Streamlit Interface
+st.title("Codebase RAG Assistant: Generate Embeddings")
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -77,7 +131,7 @@ with col2:
 if st.button("Submit"):
     if github_url:
         try:
-            # Validate GitHub URL
+            # Parse GitHub URL
             url_parts = github_url.rstrip("/").split("/")
             if len(url_parts) < 5:
                 st.error(
@@ -88,37 +142,26 @@ if st.button("Submit"):
                 repo_name = url_parts[4]
                 branch = branch.strip() if branch.strip() else "main"
 
-                # Load files from GitHub repository
-                loader = GithubFileLoader(
-                    repo=f"{repo_owner}/{repo_name}",
-                    branch=branch,
-                    github_api_url="https://api.github.com",
-                    file_filter=should_load_file,
-                )
-
-                docs = loader.load()
+                # Load and process documents
+                docs = load_github_docs(repo_owner, repo_name, branch)
                 st.success(f"Successfully loaded {len(docs)} documents.")
 
-                split_documents = []
-                skipped_files = 0
-                for doc in docs:
-                    file_extension = (
-                        doc.metadata.get("source", "").split(".")[-1].lower()
-                    )
-                    file_extension = f".{file_extension}"
-
-                    # Get the relevant splitter
-                    text_splitter = get_text_splitter(file_extension)
-                    if text_splitter:
-                        split_docs = text_splitter.split_documents([doc])
-                        split_documents.extend(split_docs)
-                    else:
-                        skipped_files += 1  # Count skipped files
-
-                st.success(
-                    f"Code successfully split into {len(split_documents)} chunks."
-                )
+                split_docs, skipped_files = split_documents(docs)
+                st.success(f"Code successfully split into {len(split_docs)} chunks.")
                 st.info(f"Skipped {skipped_files} unsupported files.")
+
+                # Generate embeddings
+                vector_store = generate_embeddings(split_docs)
+                st.success("Vector embeddings generated successfully.")
+
+                # Display the first embedding
+                if split_docs:
+                    first_chunk = split_docs[0].page_content
+                    first_embedding = vector_store.embeddings.embed_query(first_chunk)
+                    st.write(f"**First Chunk:**\n{first_chunk}")
+                    st.write(
+                        f"**First Embedding:**\n{first_embedding[:10]} (showing first 10 dimensions)"
+                    )
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
