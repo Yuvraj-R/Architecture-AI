@@ -3,10 +3,15 @@ import os
 from langchain_community.document_loaders import GithubFileLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
 from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
+from pinecone import Pinecone
 
 load_dotenv()
+
+# Pinecone is already initialized
+index = Pinecone(api_key=os.getenv("PINECONE_API_KEY")).Index("codebase-rag")
 
 IGNORED_DIRS = {
     "node_modules",
@@ -104,23 +109,25 @@ def split_documents(docs):
     return split_documents, skipped_files
 
 
-def generate_embeddings(split_documents):
+def store_embeddings_in_pinecone(split_documents):
     """
-    Generate vector embeddings for the split documents.
+    Generate vector embeddings for the split documents and store them in Pinecone.
     """
     if not os.environ.get("OPENAI_API_KEY"):
         raise ValueError(
             "OpenAI API key is missing. Please set it in your environment."
         )
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
-    vector_store = InMemoryVectorStore(embeddings)
-    vector_store.add_documents(documents=split_documents)
-    return vector_store
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+
+    PineconeVectorStore.from_documents(
+        documents=split_documents,
+        embedding=embeddings,
+        index_name="codebase-rag",
+    )
 
 
-# Streamlit Interface
-st.title("Codebase RAG Assistant: Generate Embeddings")
+st.title("Codebase RAG Assistant: Store Vectors in Pinecone")
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -142,7 +149,7 @@ if st.button("Submit"):
                 repo_name = url_parts[4]
                 branch = branch.strip() if branch.strip() else "main"
 
-                # Load and process documents
+                # Load documents
                 docs = load_github_docs(repo_owner, repo_name, branch)
                 st.success(f"Successfully loaded {len(docs)} documents.")
 
@@ -150,18 +157,9 @@ if st.button("Submit"):
                 st.success(f"Code successfully split into {len(split_docs)} chunks.")
                 st.info(f"Skipped {skipped_files} unsupported files.")
 
-                # Generate embeddings
-                vector_store = generate_embeddings(split_docs)
-                st.success("Vector embeddings generated successfully.")
-
-                # Display the first embedding
-                if split_docs:
-                    first_chunk = split_docs[0].page_content
-                    first_embedding = vector_store.embeddings.embed_query(first_chunk)
-                    st.write(f"**First Chunk:**\n{first_chunk}")
-                    st.write(
-                        f"**First Embedding:**\n{first_embedding[:10]} (showing first 10 dimensions)"
-                    )
+                # Store embeddings in Pinecone
+                store_embeddings_in_pinecone(split_docs)
+                st.success("Vector embeddings stored in Pinecone successfully.")
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
