@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from git import Repo
 from dotenv import load_dotenv
 
@@ -171,6 +172,14 @@ def store_embeddings_in_pinecone(split_documents, namespace):
         namespace=namespace,
     )
 
+    expected_count = len(split_documents)
+    while True:
+        time.sleep(1)
+        stats = index.describe_index_stats()
+        vector_count = stats["namespaces"].get(namespace, {}).get("vector_count", 0)
+        if vector_count >= expected_count:
+            break
+
 
 def perform_rag(query, namespace):
     """
@@ -180,7 +189,7 @@ def perform_rag(query, namespace):
     query_embedding = embeddings.embed_query(query)
 
     results = index.query(
-        vector=query_embedding, top_k=5, include_metadata=True, namespace=namespace
+        vector=query_embedding, top_k=10, include_metadata=True, namespace=namespace
     )
 
     # Build a context string from top 5 matches
@@ -196,7 +205,7 @@ def perform_rag(query, namespace):
         + query
     )
 
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+    llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
 
     messages = [
         SystemMessage(
