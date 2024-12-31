@@ -185,6 +185,13 @@ def perform_query(query, namespace):
         vector=query_embedding, top_k=5, include_metadata=True, namespace=namespace
     )
 
+    # Build a context string from top 5 matches
+    contexts = []
+    for match in results["matches"]:
+        snippet = match["metadata"].get("text", "")
+        contexts.append(snippet)
+    print(contexts)
+
     return results
 
 
