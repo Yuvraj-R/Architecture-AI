@@ -158,9 +158,12 @@ def store_embeddings_in_pinecone(split_documents, namespace):
     """
     Generate vector embeddings for the split documents and store them in Pinecone.
     """
+    # Check if the given namespace already exists, and clear it if so
+    stats = index.describe_index_stats()
+    if stats and "namespaces" in stats and namespace in stats["namespaces"]:
+        index.delete(deleteAll=True, namespace=namespace)
 
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-
     PineconeVectorStore.from_documents(
         documents=split_documents,
         embedding=embeddings,
