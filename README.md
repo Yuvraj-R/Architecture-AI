@@ -26,7 +26,7 @@
 ---
 
 ### 🚀 Give it a try:
-[**Codebase RAG Assistant**](https://share.streamlit.io/?aliId=eyJpIjoicktQYlgzRGpFT0RqVDBKUiIsInQiOiJzNFhPbTlFODZFTjRRcGcycCt3anV3PT0ifQ%253D%253D)
+[**Codebase RAG Assistant**](https://codebase-rag-app.streamlit.app)
 
 ---
 
