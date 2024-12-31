@@ -1,13 +1,16 @@
-import streamlit as st
 import os
 import shutil
 from git import Repo
 from dotenv import load_dotenv
-from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
+
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.docstore.document import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
-from langchain_openai import OpenAIEmbeddings
+
 from pinecone import Pinecone
+import streamlit as st
 from sentence_transformers import SentenceTransformer
 
 load_dotenv()
@@ -85,11 +88,10 @@ def load_github_docs(repo_owner, repo_name, branch):
     # Construct a local path to clone the repo
     local_repo_path = os.path.join("repos", f"{repo_owner}_{repo_name}")
 
-    # If it already exists, remove it to ensure a fresh clone
+    # If it already exists, remove it
     if os.path.exists(local_repo_path):
         shutil.rmtree(local_repo_path)
 
-    # Clone the GitHub repo locally using the provided branch
     Repo.clone_from(
         f"https://github.com/{repo_owner}/{repo_name}.git",
         local_repo_path,
@@ -97,7 +99,6 @@ def load_github_docs(repo_owner, repo_name, branch):
     )
 
     docs = []
-    # Walk through the local repo and load files that should be processed
     for root, dirs, files in os.walk(local_repo_path):
         # Filter out ignored directories directly
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
@@ -106,7 +107,7 @@ def load_github_docs(repo_owner, repo_name, branch):
             file_path = os.path.join(root, file_name)
             relative_path = os.path.relpath(file_path, local_repo_path)
 
-            # Check if we should load this file (e.g., skip 'node_modules', etc.)
+            # Check if we should load this file
             if not should_load_file(relative_path):
                 continue
 
@@ -118,7 +119,6 @@ def load_github_docs(repo_owner, repo_name, branch):
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
 
-                # Create a single Document with this file's content
                 doc = Document(page_content=content, metadata={"source": relative_path})
                 docs.append(doc)
 
@@ -126,7 +126,6 @@ def load_github_docs(repo_owner, repo_name, branch):
                 # If the file can't be decoded as UTF-8, skip it
                 continue
             except Exception as e:
-                # Log or skip any other file read errors
                 print(f"Skipping {relative_path} due to error: {e}")
                 continue
 
@@ -159,10 +158,6 @@ def store_embeddings_in_pinecone(split_documents, namespace):
     """
     Generate vector embeddings for the split documents and store them in Pinecone.
     """
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError(
-            "OpenAI API key is missing. Please set it in your environment."
-        )
 
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
@@ -174,7 +169,7 @@ def store_embeddings_in_pinecone(split_documents, namespace):
     )
 
 
-def perform_query(query, namespace):
+def perform_rag(query, namespace):
     """
     Query the Pinecone database and fetch results based on the query.
     """
@@ -190,9 +185,26 @@ def perform_query(query, namespace):
     for match in results["matches"]:
         snippet = match["metadata"].get("text", "")
         contexts.append(snippet)
-    print(contexts)
 
-    return results
+    augmented_query = (
+        "<CONTEXT>\n"
+        + "\n\n-------\n\n".join(contexts)
+        + "\n-------\n</CONTEXT>\n\n\nMY QUESTION:\n"
+        + query
+    )
+
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+
+    messages = [
+        SystemMessage(
+            "You are a Senior Software Engineer. Answer based on the provided context. However, don't mention said context as the end user doesn't know about it."
+        ),
+        HumanMessage(augmented_query),
+    ]
+
+    response = llm.invoke(messages)
+
+    return response.content
 
 
 # Streamlit Interface
@@ -258,8 +270,12 @@ if prompt := st.chat_input("Ask about the codebase..."):
 
         with st.spinner("Querying Pinecone database..."):
             try:
-                # Perform the query
-                results = perform_query(prompt, namespace=st.session_state.repo_path)
-                st.write(results)
+                answer = perform_rag(prompt, st.session_state.repo_path)
+
+                st.chat_message("assistant").markdown(answer)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": answer}
+                )
+
             except Exception as e:
                 st.error(f"An error occurred: {e}")
