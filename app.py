@@ -36,9 +36,7 @@ EXTENSION_TO_LANGUAGE = {
 
 
 def should_load_file(file_path):
-    """
-    Determine whether a file should be loaded based on ignored directories.
-    """
+    """Determine whether a file should be loaded based on ignored directories."""
     for ignored_dir in IGNORED_DIRS:
         if f"/{ignored_dir}/" in file_path or file_path.startswith(f"{ignored_dir}/"):
             return False
@@ -46,9 +44,7 @@ def should_load_file(file_path):
 
 
 def get_text_splitter(file_extension):
-    """
-    Returns the appropriate text splitter based on the file extension.
-    """
+    """Returns the appropriate text splitter based on the file extension."""
     language = EXTENSION_TO_LANGUAGE.get(file_extension)
     if language:
         return RecursiveCharacterTextSplitter.from_language(
@@ -58,10 +54,7 @@ def get_text_splitter(file_extension):
 
 
 def load_github_docs(repo_owner, repo_name, branch):
-    """
-    Load documents from the specified GitHub repository.
-    (Refactored to clone locally and read files, rather than using GithubFileLoader.)
-    """
+    """Load documents from the specified GitHub repository by cloning locally."""
     # Construct a local path to clone the repo
     local_repo_path = os.path.join("repos", f"{repo_owner}_{repo_name}")
 
@@ -111,9 +104,7 @@ def load_github_docs(repo_owner, repo_name, branch):
 
 
 def split_documents(docs):
-    """
-    Split documents into smaller chunks based on file type.
-    """
+    """Split documents into smaller chunks based on file type."""
     split_documents_list = []
     skipped_files = 0
 
@@ -132,9 +123,7 @@ def split_documents(docs):
 
 
 def store_embeddings_in_pinecone(split_documents, namespace):
-    """
-    Generate vector embeddings for the split documents and store them in Pinecone.
-    """
+    """Generate and store vector embeddings in Pinecone for provided documents."""
     # Check if the given namespace already exists, and clear it if so
     stats = index.describe_index_stats()
     if stats and "namespaces" in stats and namespace in stats["namespaces"]:
@@ -158,9 +147,7 @@ def store_embeddings_in_pinecone(split_documents, namespace):
 
 
 def perform_rag(query, namespace):
-    """
-    Query the Pinecone database and fetch results based on the query.
-    """
+    """Query the Pinecone database and fetch results based on the query."""
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     query_embedding = embeddings.embed_query(query)
 
