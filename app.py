@@ -12,7 +12,6 @@ from langchain_pinecone import PineconeVectorStore
 
 from pinecone import Pinecone
 import streamlit as st
-from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
@@ -20,42 +19,19 @@ load_dotenv()
 index = Pinecone(api_key=os.getenv("PINECONE_API_KEY")).Index("codebase-rag")
 
 IGNORED_DIRS = {
-    "node_modules",
-    "venv",
-    "env",
-    "dist",
-    "build",
-    ".git",
-    "__pycache__",
-    ".next",
-    ".vscode",
-    "vendor",
+    "node_modules", "venv", "env", "dist", "build", ".git", "__pycache__", 
+    ".next", ".vscode", "vendor",
 }
 
 EXTENSION_TO_LANGUAGE = {
-    ".cpp": Language.CPP,
-    ".go": Language.GO,
-    ".java": Language.JAVA,
-    ".kotlin": Language.KOTLIN,
-    ".js": Language.JS,
-    ".ts": Language.TS,
-    ".php": Language.PHP,
-    ".proto": Language.PROTO,
-    ".py": Language.PYTHON,
-    ".rst": Language.RST,
-    ".rb": Language.RUBY,
-    ".rs": Language.RUST,
-    ".scala": Language.SCALA,
-    ".swift": Language.SWIFT,
-    ".md": Language.MARKDOWN,
-    ".tex": Language.LATEX,
-    ".html": Language.HTML,
-    ".cs": Language.CSHARP,
-    ".cob": Language.COBOL,
-    ".c": Language.C,
-    ".lua": Language.LUA,
-    ".pl": Language.PERL,
-    ".hs": Language.HASKELL,
+    ".cpp": Language.CPP, ".go": Language.GO, ".java": Language.JAVA, 
+    ".kotlin": Language.KOTLIN, ".js": Language.JS, ".ts": Language.TS, 
+    ".php": Language.PHP, ".proto": Language.PROTO, ".py": Language.PYTHON, 
+    ".rst": Language.RST, ".rb": Language.RUBY, ".rs": Language.RUST, 
+    ".scala": Language.SCALA, ".swift": Language.SWIFT, ".md": Language.MARKDOWN, 
+    ".tex": Language.LATEX, ".html": Language.HTML, ".cs": Language.CSHARP, 
+    ".cob": Language.COBOL, ".c": Language.C, ".lua": Language.LUA, 
+    ".pl": Language.PERL, ".hs": Language.HASKELL,
 }
 
 
